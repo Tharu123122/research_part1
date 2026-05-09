@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.schemas.prediction import PredictionResponse, RiskFactorsRequest, RiskFactorSummary
+from app.services import preventive_risk_engine
 from app.utils.paths import PREVENTIVE_ENGINE_PATH
 
 
@@ -72,10 +73,7 @@ def _hygiene_signal(gum_disease: str, poor_oral_hygiene: str) -> str:
 @lru_cache(maxsize=1)
 def _load_preventive_engine() -> Any:
     if not PREVENTIVE_ENGINE_PATH.exists():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Preventive risk engine file is missing.",
-        )
+        return preventive_risk_engine
     spec = importlib.util.spec_from_file_location("preventive_risk_engine", PREVENTIVE_ENGINE_PATH)
     if spec is None or spec.loader is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Preventive risk engine cannot be loaded.")
