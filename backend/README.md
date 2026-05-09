@@ -29,7 +29,7 @@ Alternatively, set the Railway service root directory to `/backend` and use
 `/backend/railway.json` as the config file. The production start command is:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 ```
 
 ## Health Check
