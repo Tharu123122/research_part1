@@ -1,0 +1,290 @@
+{
+  "info": {
+    "name": "Oral Cancer Risk API",
+    "description": "Postman collection for testing the FastAPI oral cancer risk prediction backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "wavFilePath",
+      "value": "C:\\path\\to\\sample.wav"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Service is healthy', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('ok');",
+              "  pm.expect(json.service).to.eql('oral-cancer-risk-api');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Structured Risk Prediction",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"age\": 42,\n  \"gender\": \"Female\",\n  \"smoking\": \"No\",\n  \"alcohol\": \"Occasional\",\n  \"betelChewing\": \"No\",\n  \"oralUlcer\": \"No\",\n  \"gumDisease\": \"Mild\",\n  \"oralPain\": \"No\",\n  \"hpvInfection\": \"No\",\n  \"poorOralHygiene\": \"No\",\n  \"diet\": \"Medium\",\n  \"familyHistory\": \"No\",\n  \"compromisedImmuneSystem\": \"No\",\n  \"unexplainedBleeding\": \"No\",\n  \"difficultySwallowing\": \"No\",\n  \"whiteOrRedPatches\": \"No\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/predict/risk-factors",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "predict",
+            "risk-factors"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Structured response shape is valid', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property('riskPercentage');",
+              "  pm.expect(json).to.have.property('level');",
+              "  pm.expect(['low', 'moderate', 'high']).to.include(json.level);",
+              "  pm.expect(json.voiceScore).to.eql(null);",
+              "  pm.expect(json.voiceAnalysis).to.eql(null);",
+              "  pm.expect(json.disclaimer).to.include('not a medical diagnosis');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Voice Prediction Upload",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{wavFilePath}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/predict/voice",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "predict",
+            "voice"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Voice response shape is valid', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.voiceScore).to.be.within(0, 100);",
+              "  pm.expect(['stable', 'slight_variation', 'abnormal_marker']).to.include(json.voiceLabel);",
+              "  pm.expect(json.voiceAnalysis).to.have.property('mfccPattern');",
+              "  pm.expect(json.rawFeatures).to.have.property('pitch_mean');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Multimodal Prediction - JSON With Voice Score",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"riskFactors\": {\n    \"age\": 42,\n    \"gender\": \"Female\",\n    \"smoking\": \"No\",\n    \"alcohol\": \"Occasional\",\n    \"betelChewing\": \"No\",\n    \"oralUlcer\": \"No\",\n    \"gumDisease\": \"Mild\",\n    \"oralPain\": \"No\",\n    \"hpvInfection\": \"No\",\n    \"poorOralHygiene\": \"No\",\n    \"diet\": \"Medium\",\n    \"familyHistory\": \"No\",\n    \"compromisedImmuneSystem\": \"No\",\n    \"unexplainedBleeding\": \"No\",\n    \"difficultySwallowing\": \"No\",\n    \"whiteOrRedPatches\": \"No\"\n  },\n  \"voiceScore\": 25\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/predict/multimodal",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "predict",
+            "multimodal"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Multimodal JSON response is valid', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.structuredScore).to.be.a('number');",
+              "  pm.expect(json.voiceScore).to.eql(25);",
+              "  pm.expect(json.finalScore).to.be.a('number');",
+              "  pm.expect(['low', 'moderate', 'high']).to.include(json.level);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Multimodal Prediction - Multipart With Voice File",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "riskFactors",
+              "value": "{\"age\":42,\"gender\":\"Female\",\"smoking\":\"No\",\"alcohol\":\"Occasional\",\"betelChewing\":\"No\",\"oralUlcer\":\"No\",\"gumDisease\":\"Mild\",\"oralPain\":\"No\",\"hpvInfection\":\"No\",\"poorOralHygiene\":\"No\",\"diet\":\"Medium\",\"familyHistory\":\"No\",\"compromisedImmuneSystem\":\"No\",\"unexplainedBleeding\":\"No\",\"difficultySwallowing\":\"No\",\"whiteOrRedPatches\":\"No\"}",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{wavFilePath}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/predict/multimodal",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "predict",
+            "multimodal"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Multipart multimodal response is valid', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.structuredScore).to.be.a('number');",
+              "  pm.expect(json.voiceScore).to.be.within(0, 100);",
+              "  pm.expect(json.voiceAnalysis).to.have.property('mfccPattern');",
+              "  pm.expect(json.finalScore).to.be.a('number');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prediction History",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/history",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "history"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('History returns an array', function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
