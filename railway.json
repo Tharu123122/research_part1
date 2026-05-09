@@ -2,10 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
-    "buildCommand": "if [ -f backend/requirements.txt ]; then python -m pip install -r backend/requirements.txt; else python -m pip install -r requirements.txt; fi"
+    "buildCommand": "if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; elif [ -f backend/requirements.txt ]; then python -m pip install -r backend/requirements.txt; else echo 'requirements.txt not found' && exit 1; fi"
   },
   "deploy": {
-    "startCommand": "if [ -d backend ]; then cd backend; fi; python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
+    "startCommand": "if [ -d backend ]; then cd backend; elif [ ! -d app ]; then echo 'backend app directory not found' && exit 1; fi; python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}",
     "healthcheckPath": "/health"
   }
 }
