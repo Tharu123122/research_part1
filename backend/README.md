@@ -20,8 +20,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Railway Deployment
 
-Set the Railway service root directory to `/backend` and use `/backend/railway.json`
-as the config file. The production start command is:
+You can deploy from the repository root with the root `railway.json`. It installs
+dependencies through the root `requirements.txt`, which delegates to
+`backend/requirements.txt`, then starts the API from the backend directory.
+
+Alternatively, set the Railway service root directory to `/backend` and use
+`/backend/railway.json` as the config file. The production start command is:
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
