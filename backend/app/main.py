@@ -1,7 +1,8 @@
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, status
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,13 +10,23 @@ from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import settings
-from app.schemas.prediction import HistoryItem, MultimodalJsonRequest, PredictionResponse, RiskFactorsRequest, VoicePredictionResponse
-from app.services.report_service import add_history_item, get_history
+from app.schemas.prediction import HistoryItem, MultimodalJsonRequest, PredictionRecord, PredictionResponse, RiskFactorsRequest, VoicePredictionResponse
+from app.services.database_service import close_database, connect_database, database_status, get_history, get_prediction_records, save_prediction_record
 from app.services.risk_service import build_structured_prediction, combine_predictions
 from app.services.voice_service import predict_uploaded_voice
 
 
-app = FastAPI(title="Oral Cancer Risk Prediction API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        await connect_database()
+    except Exception as exc:
+        print(f"MongoDB connection unavailable: {exc}")
+    yield
+    await close_database()
+
+
+app = FastAPI(title="Oral Cancer Risk Prediction API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,12 +61,17 @@ def _voice_status(response: PredictionResponse) -> str:
     return response.voiceAnalysis.mfccPattern
 
 
-def _record_prediction(response: PredictionResponse) -> None:
-    add_history_item(
-        risk_percentage=response.riskPercentage,
+def _build_history_item(response: PredictionResponse) -> HistoryItem:
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    return HistoryItem(
+        id=str(uuid4()),
+        date=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        riskPercentage=response.riskPercentage,
         level=response.level,
         summary=_history_summary(response),
-        voice_status=_voice_status(response),
+        voiceStatus=_voice_status(response),
     )
 
 
@@ -72,19 +88,33 @@ def _parse_risk_factors(value: Any) -> RiskFactorsRequest:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": settings.service_name}
+    return {"status": "ok", "service": settings.service_name, "database": await database_status()}
 
 
 @app.post("/api/predict/risk-factors", response_model=PredictionResponse)
 async def predict_risk_factors(payload: RiskFactorsRequest) -> PredictionResponse:
     response = build_structured_prediction(payload)
-    _record_prediction(response)
+    history_item = _build_history_item(response)
+    await save_prediction_record(
+        prediction_type="risk_factors",
+        request_data=payload.model_dump(mode="json"),
+        response_data=response.model_dump(mode="json"),
+        history=history_item,
+    )
     return response
 
 
 @app.post("/api/predict/voice", response_model=VoicePredictionResponse)
 async def predict_voice(file: UploadFile) -> VoicePredictionResponse:
-    return await predict_uploaded_voice(file)
+    file_metadata = {"filename": file.filename, "contentType": file.content_type}
+    response = await predict_uploaded_voice(file)
+    await save_prediction_record(
+        prediction_type="voice",
+        request_data={"file": file_metadata},
+        response_data=response.model_dump(mode="json"),
+        history=None,
+    )
+    return response
 
 
 @app.post("/api/predict/multimodal", response_model=PredictionResponse)
@@ -99,15 +129,18 @@ async def predict_multimodal(request: Request) -> PredictionResponse:
         if "riskFactors" not in form:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Multipart requests require a riskFactors JSON field.")
         risk_factors = _parse_risk_factors(form["riskFactors"])
+        request_data: dict[str, Any] = {"riskFactors": risk_factors.model_dump(mode="json")}
 
         uploaded = form.get("file")
         if isinstance(uploaded, (UploadFile, StarletteUploadFile)):
             file = uploaded
+            request_data["file"] = {"filename": uploaded.filename, "contentType": uploaded.content_type}
 
         raw_voice_score = form.get("voiceScore")
         if raw_voice_score not in (None, ""):
             try:
                 voice_score = float(str(raw_voice_score))
+                request_data["voiceScore"] = voice_score
             except ValueError as exc:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="voiceScore must be a number between 0 and 100.") from exc
     else:
@@ -118,6 +151,7 @@ async def predict_multimodal(request: Request) -> PredictionResponse:
         payload = MultimodalJsonRequest.model_validate(body)
         risk_factors = payload.riskFactors
         voice_score = payload.voiceScore
+        request_data = payload.model_dump(mode="json")
 
     if voice_score is not None and not 0 <= voice_score <= 100:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="voiceScore must be between 0 and 100.")
@@ -130,10 +164,21 @@ async def predict_multimodal(request: Request) -> PredictionResponse:
         voice_analysis = voice_result.voiceAnalysis
 
     response = combine_predictions(structured=structured, voice_score=voice_score, voice_analysis=voice_analysis)
-    _record_prediction(response)
+    history_item = _build_history_item(response)
+    await save_prediction_record(
+        prediction_type="multimodal",
+        request_data=request_data,
+        response_data=response.model_dump(mode="json"),
+        history=history_item,
+    )
     return response
 
 
 @app.get("/api/history", response_model=list[HistoryItem])
-async def history() -> list[HistoryItem]:
-    return get_history()
+async def history(limit: int = Query(default=50, ge=1, le=200)) -> list[HistoryItem]:
+    return await get_history(limit=limit)
+
+
+@app.get("/api/predictions", response_model=list[PredictionRecord])
+async def predictions(limit: int = Query(default=50, ge=1, le=200)) -> list[PredictionRecord]:
+    return await get_prediction_records(limit=limit)

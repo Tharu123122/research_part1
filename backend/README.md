@@ -18,6 +18,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## MongoDB
+
+Set these environment variables before starting the API:
+
+```bash
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster-url>/?retryWrites=true&w=majority
+MONGODB_DATABASE=oral_cancer_screening
+MONGODB_PREDICTIONS_COLLECTION=predictions
+```
+
+`MONGODB_URI` is required for persistent storage. If it is missing, the API still
+runs with temporary in-memory records for local testing.
+
 ## Railway Deployment
 
 You can deploy from the repository root with the root `railway.json`. It installs
@@ -52,7 +65,8 @@ Expected response:
 - `POST /api/predict/risk-factors` accepts structured risk factors as JSON.
 - `POST /api/predict/voice` accepts multipart form data with a `.wav` file field named `file`.
 - `POST /api/predict/multimodal` accepts either JSON with `riskFactors` and optional `voiceScore`, or multipart form data with `riskFactors` as a JSON string plus optional `file` or `voiceScore`.
-- `GET /api/history` returns in-memory prediction history for the current server process.
+- `GET /api/history` returns lightweight prediction history for mobile history screens.
+- `GET /api/predictions` returns full saved prediction records, including request inputs and model responses.
 
 ## Frontend API Base URL
 

@@ -83,3 +83,12 @@ class HistoryItem(BaseModel):
     level: RiskLevel
     summary: str
     voiceStatus: str
+
+
+class PredictionRecord(BaseModel):
+    id: str
+    date: str
+    predictionType: Literal["risk_factors", "voice", "multimodal"]
+    request: dict[str, Any]
+    response: dict[str, Any]
+    history: HistoryItem | None = None
