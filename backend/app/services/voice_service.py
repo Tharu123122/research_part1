@@ -15,6 +15,9 @@ from app.core.config import settings
 from app.schemas.prediction import VoiceAnalysis, VoicePredictionResponse
 from app.utils.paths import VOICE_FEATURE_SCRIPT_PATH, VOICE_MODEL_PATH
 
+BUNDLED_VOICE_FEATURE_SCRIPT_PATH = Path(__file__).with_name("voice_feature_extractor.py")
+BUNDLED_VOICE_MODEL_PATH = Path(__file__).with_name("models") / "voice_abnormality_model.joblib"
+
 
 def _finite_float(value: Any) -> float:
     try:
@@ -26,9 +29,10 @@ def _finite_float(value: Any) -> float:
 
 @lru_cache(maxsize=1)
 def _load_voice_feature_module() -> Any:
-    if not VOICE_FEATURE_SCRIPT_PATH.exists():
+    script_path = VOICE_FEATURE_SCRIPT_PATH if VOICE_FEATURE_SCRIPT_PATH.exists() else BUNDLED_VOICE_FEATURE_SCRIPT_PATH
+    if not script_path.exists():
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Voice feature extraction script is missing.")
-    spec = importlib.util.spec_from_file_location("extract_voice_features", VOICE_FEATURE_SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("extract_voice_features", script_path)
     if spec is None or spec.loader is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Voice feature extractor cannot be loaded.")
     module = importlib.util.module_from_spec(spec)
@@ -40,9 +44,10 @@ def _load_voice_feature_module() -> Any:
 
 @lru_cache(maxsize=1)
 def _load_voice_model() -> dict[str, Any]:
-    if not VOICE_MODEL_PATH.exists():
+    model_path = VOICE_MODEL_PATH if VOICE_MODEL_PATH.exists() else BUNDLED_VOICE_MODEL_PATH
+    if not model_path.exists():
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Voice abnormality model file is missing.")
-    payload = joblib.load(VOICE_MODEL_PATH)
+    payload = joblib.load(model_path)
     if not isinstance(payload, dict) or "model" not in payload or "feature_columns" not in payload:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Voice model payload is invalid.")
     return payload
