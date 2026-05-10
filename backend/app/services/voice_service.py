@@ -1,11 +1,13 @@
 import importlib.util
 import math
 import shutil
+import subprocess
 import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import imageio_ffmpeg
 import joblib
 import numpy as np
 import pandas as pd
@@ -17,6 +19,7 @@ from app.utils.paths import VOICE_FEATURE_SCRIPT_PATH, VOICE_MODEL_PATH
 
 BUNDLED_VOICE_FEATURE_SCRIPT_PATH = Path(__file__).with_name("voice_feature_extractor.py")
 BUNDLED_VOICE_MODEL_PATH = Path(__file__).with_name("models") / "voice_abnormality_model.joblib"
+SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".m4a", ".mp4", ".aac", ".3gp"}
 
 
 def _finite_float(value: Any) -> float:
@@ -101,6 +104,39 @@ def _extract_from_path(path: Path) -> dict[str, Any]:
     return extractor.extract_features(row)
 
 
+def _convert_to_wav(source_path: Path) -> Path:
+    wav_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    wav_path = Path(wav_file.name)
+    wav_file.close()
+
+    try:
+        subprocess.run(
+            [
+                imageio_ffmpeg.get_ffmpeg_exe(),
+                "-y",
+                "-i",
+                str(source_path),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                str(wav_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception as exc:
+        wav_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to convert recorded audio for voice analysis: {exc}",
+        ) from exc
+
+    return wav_path
+
+
 def predict_voice_file_path(path: Path) -> VoicePredictionResponse:
     try:
         features = _extract_from_path(path)
@@ -133,17 +169,23 @@ def predict_voice_file_path(path: Path) -> VoicePredictionResponse:
 
 async def predict_uploaded_voice(file: UploadFile) -> VoicePredictionResponse:
     filename = file.filename or "upload.wav"
-    if not filename.lower().endswith(".wav"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only .wav audio uploads are supported.")
+    suffix = Path(filename).suffix.lower() or ".wav"
+    if suffix not in SUPPORTED_AUDIO_EXTENSIONS:
+        supported = ", ".join(sorted(SUPPORTED_AUDIO_EXTENSIONS))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Only {supported} audio uploads are supported.")
 
-    suffix = Path(filename).suffix or ".wav"
     temp_path: Path | None = None
+    analysis_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             temp_path = Path(temp_file.name)
             shutil.copyfileobj(file.file, temp_file)
-        return predict_voice_file_path(temp_path)
+
+        analysis_path = temp_path if suffix == ".wav" else _convert_to_wav(temp_path)
+        return predict_voice_file_path(analysis_path)
     finally:
         await file.close()
+        if analysis_path and analysis_path != temp_path and analysis_path.exists():
+            analysis_path.unlink(missing_ok=True)
         if temp_path and temp_path.exists():
             temp_path.unlink(missing_ok=True)
